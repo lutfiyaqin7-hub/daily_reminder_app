@@ -11,23 +11,26 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  List<Map<String, dynamic>> _activities= [
+  List<Map<String, dynamic>> _activities = [
     {
       'title': 'Presentasi Tugas Pemrograman Mobile',
       'date': 'Senin, 15 Juni 2026',
       'time': '09:00 WIB',
+      'category': 'Kuliah',
       'isDone': false
     },
     {
       'title': 'Bimbingan Proposal Skripsi/Tugas Akhir',
       'date': 'Rabu, 17 Juni 2026',
       'time': '13:30 WIB',
+      'category': 'Penting',
       'isDone': true
     },
     {
       'title': 'Pengumpulan Laporan Praktikum',
       'date': 'Jumat, 19 Juni 2026',
       'time': '23:59 WIB',
+      'category': 'Tugas',
       'isDone': false
     },
   ];
@@ -59,84 +62,123 @@ class _DashboardPageState extends State<DashboardPage> {
     final titleController = TextEditingController();
     final dateController = TextEditingController(text: 'Senin, 22 Juni 2026');
     final timeController = TextEditingController(text: '10:00 WIB');
+    String selectedCategory = 'Kuliah';
 
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('Tambah Kegiatan Baru', style: TextStyle(fontWeight: FontWeight.bold)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: titleController,
-                  decoration: InputDecoration(
-                    labelText: 'Nama Kegiatan / Agenda',
-                    prefixIcon: const Icon(Icons.title),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Text('Tambah Kegiatan Baru', style: TextStyle(fontWeight: FontWeight.bold)),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: titleController,
+                      decoration: InputDecoration(
+                        labelText: 'Nama Kegiatan / Agenda',
+                        prefixIcon: const Icon(Icons.title, color: Color(0xFF4F46E5)),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: dateController,
+                      decoration: InputDecoration(
+                        labelText: 'Tanggal & Hari',
+                        prefixIcon: const Icon(Icons.calendar_today_rounded, color: Color(0xFF4F46E5)),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: timeController,
+                      decoration: InputDecoration(
+                        labelText: 'Jam (Cth: 10:00 WIB)',
+                        prefixIcon: const Icon(Icons.access_time_rounded, color: Color(0xFF4F46E5)),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: selectedCategory,
+                      decoration: InputDecoration(
+                        labelText: 'Kategori Agenda',
+                        prefixIcon: const Icon(Icons.category_rounded, color: Color(0xFF4F46E5)),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      items: ['Kuliah', 'Tugas', 'Penting', 'Pribadi'].map((String category) {
+                        return DropdownMenuItem(
+                          value: category,
+                          child: Text(category),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setStateDialog(() {
+                          selectedCategory = value!;
+                        });
+                      },
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: dateController,
-                  decoration: InputDecoration(
-                    labelText: 'Tanggal & Hari',
-                    prefixIcon: const Icon(Icons.calendar_today_rounded),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Batal', style: TextStyle(color: Colors.grey)),
                 ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: timeController,
-                  decoration: InputDecoration(
-                    labelText: 'Jam (Cth: 10:00 WIB)',
-                    prefixIcon: const Icon(Icons.access_time_rounded),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF4F46E5),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
+                  onPressed: () {
+                    if (titleController.text.isNotEmpty) {
+                      setState(() {
+                        _activities.add({
+                          'title': titleController.text,
+                          'date': dateController.text,
+                          'time': timeController.text,
+                          'category': selectedCategory,
+                          'isDone': false,
+                        });
+                      });
+                      _saveActivities();
+                      Navigator.pop(context);
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Kegiatan berhasil dijadwalkan & pengingat aktif! 🔔'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    }
+                  },
+                  child: const Text('Simpan'),
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Batal', style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF4F46E5),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              onPressed: () {
-                if (titleController.text.isNotEmpty) {
-                  setState(() {
-                    _activities.add({
-                      'title': titleController.text,
-                      'date': dateController.text,
-                      'time': timeController.text,
-                      'isDone': false,
-                    });
-                  });
-                  _saveActivities();
-                  Navigator.pop(context);
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Kegiatan berhasil dijadwalkan & pengingat aktif! 🔔'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
-              },
-              child: const Text('Simpan'),
-            ),
-          ],
+            );
+          },
         );
       },
     );
+  }
+
+  Color _getCategoryColor(String category) {
+    switch (category) {
+      case 'Kuliah':
+        return Colors.blue;
+      case 'Tugas':
+        return Colors.orange;
+      case 'Penting':
+        return Colors.red;
+      default:
+        return Colors.purple;
+    }
   }
 
   @override
@@ -152,6 +194,7 @@ class _DashboardPageState extends State<DashboardPage> {
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
         backgroundColor: const Color(0xFF4F46E5),
+        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
@@ -170,6 +213,7 @@ class _DashboardPageState extends State<DashboardPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Kartu Statistik & Sapaan
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -269,6 +313,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       itemBuilder: (context, index) {
                         final activity = _activities[index];
                         final bool isDone = activity['isDone'] as bool;
+                        final String category = activity['category'] ?? 'Kuliah';
 
                         return Container(
                           margin: const EdgeInsets.only(bottom: 12),
@@ -287,17 +332,38 @@ class _DashboardPageState extends State<DashboardPage> {
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
                             ),
-                            title: Text(
-                              activity['title'] as String,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                decoration: isDone
-                                    ? TextDecoration.lineThrough
-                                    : TextDecoration.none,
-                                color: isDone
-                                    ? Colors.grey
-                                    : const Color(0xFF1E293B),
-                              ),
+                            title: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    activity['title'] as String,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      decoration: isDone
+                                          ? TextDecoration.lineThrough
+                                          : TextDecoration.none,
+                                      color: isDone
+                                          ? Colors.grey
+                                          : const Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: _getCategoryColor(category).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    category,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: _getCategoryColor(category),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                             subtitle: Padding(
                               padding: const EdgeInsets.only(top: 6.0),
