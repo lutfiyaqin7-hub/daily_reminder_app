@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "413539752837",
+    "project_id": "dailyreminderapp-ecca0",
+    "storage_bucket": "dailyreminderapp-ecca0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:413539752837:android:05e8fdfe7c32e4d92b42ec",
+        "android_client_info": {
+          "package_name": "com.example.daily_reminder_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDIZkn_7nAadZGFac82obyHJBmMpssMfP0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
