@@ -35,6 +35,8 @@ dependencies:
   cloud_firestore: ^5.5.0      # Database online Firestore
   flutter_local_notifications: ^18.0.1 # Pengingat notifikasi lokal
   shared_preferences: ^2.5.6
+  sqflite: ^2.3.0             # Tambahan untuk Local Database SQLite
+  path: ^1.8.3                # Pendukung direktori path SQLite
 
 dev_dependencies:
   flutter_test:
