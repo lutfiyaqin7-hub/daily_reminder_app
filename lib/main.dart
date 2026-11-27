@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart'; // Tambahan untuk Firebase
 import 'views/login_page.dart';
+import 'notification_helper.dart'; // Import helper notifikasi yang baru dibuat
 
 void main() async {
   // Wajib dipanggil agar engine Flutter siap sebelum memanggil plugin async
@@ -12,6 +13,9 @@ void main() async {
   } catch (e) {
     debugPrint("Firebase init error (diabaikan untuk web lokal): $e");
   }
+
+  // Inisialisasi Sistem Notifikasi Lokal
+  await NotificationHelper.init();
 
   runApp(const DailyReminderApp());
 }
@@ -30,6 +34,7 @@ class DailyReminderApp extends StatelessWidget {
           brightness: Brightness.light,
         ),
       ),
+      // Halaman pertama yang dibuka (Login Page)
       home: const LoginPage(),
       debugShowCheckedModeBanner: false,
     );

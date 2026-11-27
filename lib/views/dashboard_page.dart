@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'login_page.dart';
+import '../notification_helper.dart'; // Sesuaikan jalur import notification_helper jika berbeda
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -136,7 +137,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
-                  onPressed: () {
+                  onPressed: () async {
                     if (titleController.text.isNotEmpty) {
                       setState(() {
                         _activities.add({
@@ -148,11 +149,25 @@ class _DashboardPageState extends State<DashboardPage> {
                         });
                       });
                       _saveActivities();
+
+                      // --- PANGGIL ALARM NOTIFIKASI OTOMATIS ---
+                      // Contoh pengaturan waktu demo (misal: 10 detik dari sekarang agar bisa langsung dites)
+                      // Pada implementasi nyata, bisa diparsing dari input date & time user.
+                      DateTime alarmTime = DateTime.now().add(const Duration(seconds: 10));
+
+                      await NotificationHelper.scheduleNotification(
+                        id: DateTime.now().millisecondsSinceEpoch ~/ 1000, // ID Unik
+                        title: 'Pengingat Agenda: ${titleController.text}',
+                        body: 'Waktunya kegiatan kategori $selectedCategory dimulai pukul ${timeController.text}!',
+                        scheduledDate: alarmTime,
+                      );
+                      // -----------------------------------------
+
                       Navigator.pop(context);
 
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Kegiatan berhasil dijadwalkan & pengingat aktif! 🔔'),
+                          content: Text('Kegiatan berhasil dijadwalkan & alarm aktif! 🔔'),
                           backgroundColor: Colors.green,
                         ),
                       );
