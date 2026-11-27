@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
+
+import '../services/auth_service.dart';
+import '../database_helper.dart';
 import 'login_page.dart';
-import '../notification_helper.dart'; // Sesuaikan jalur import notification_helper jika berbeda
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -12,67 +12,156 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  List<Map<String, dynamic>> _activities = [
-    {
-      'title': 'Presentasi Tugas Pemrograman Mobile',
-      'date': 'Senin, 15 Juni 2026',
-      'time': '09:00 WIB',
-      'category': 'Kuliah',
-      'isDone': false
-    },
-    {
-      'title': 'Bimbingan Proposal Skripsi/Tugas Akhir',
-      'date': 'Rabu, 17 Juni 2026',
-      'time': '13:30 WIB',
-      'category': 'Penting',
-      'isDone': true
-    },
-    {
-      'title': 'Pengumpulan Laporan Praktikum',
-      'date': 'Jumat, 19 Juni 2026',
-      'time': '23:59 WIB',
-      'category': 'Tugas',
-      'isDone': false
-    },
-  ];
+  final AuthService _authService = AuthService();
+
+  List<Map<String, dynamic>> _activities = [];
+
+  String _userId = '';
+  String _userName = 'Pengguna';
+
+  bool _loading = true;
+
+  static const Color primary = Color(0xFF4F46E5);
+  static const Color secondary = Color(0xFF818CF8);
 
   @override
   void initState() {
     super.initState();
-    _loadActivities();
+    _initializeDashboard();
   }
 
-  Future<void> _loadActivities() async {
-    final prefs = await SharedPreferences.getInstance();
-    final String? dataString = prefs.getString('saved_activities');
-    if (dataString != null) {
+  // =====================================================
+  // 1. INISIALISASI AKUN DAN DASHBOARD
+  // =====================================================
+
+  Future<void> _initializeDashboard() async {
+    final user = _authService.currentUser;
+
+    if (user == null) {
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+      );
+      return;
+    }
+
+    _userId = user.uid;
+    _userName = user.displayName?.isNotEmpty == true
+        ? user.displayName!
+        : user.email?.split('@').first ?? 'Pengguna';
+
+    await _refreshActivities();
+  }
+
+  // =====================================================
+  // 2. MENGAMBIL AGENDA BERDASARKAN UID
+  // =====================================================
+
+  Future<void> _refreshActivities() async {
+    try {
+      if (_userId.isEmpty) return;
+
+      final data = await DatabaseHelper.instance.getActivities(_userId);
+
+      if (!mounted) return;
+
       setState(() {
-        _activities = List<Map<String, dynamic>>.from(
-          json.decode(dataString).map((x) => Map<String, dynamic>.from(x)),
-        );
+        _activities = data;
+        _loading = false;
       });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() => _loading = false);
+
+      _showMessage('Gagal memuat agenda: $e');
     }
   }
 
-  Future<void> _saveActivities() async {
-    final prefs = await SharedPreferences.getInstance();
-    prefs.setString('saved_activities', json.encode(_activities));
+  // =====================================================
+  // 3. MENAMBAHKAN AGENDA
+  // =====================================================
+
+  Future<void> _addNewActivity(
+    String title,
+    String date,
+    String time,
+    String category,
+  ) async {
+    await DatabaseHelper.instance.insertActivity(_userId, {
+      'title': title,
+      'date': date,
+      'time': time,
+      'category': category,
+      'is_active': 0,
+      'user_id': _userId,
+    });
+
+    await _refreshActivities();
   }
+
+  // =====================================================
+  // 4. MENGHAPUS AGENDA
+  // =====================================================
+
+  Future<void> _deleteActivity(int id) async {
+    try {
+      await DatabaseHelper.instance.deleteActivity(id, _userId);
+
+      await _refreshActivities();
+
+      if (!mounted) return;
+
+      _showMessage('Agenda berhasil dihapus.');
+    } catch (e) {
+      if (!mounted) return;
+      _showMessage('Gagal menghapus agenda.');
+    }
+  }
+
+  // =====================================================
+  // 5. MENGUBAH STATUS AGENDA
+  // =====================================================
+
+  Future<void> _toggleActivity(int id, bool isDone) async {
+    try {
+      await DatabaseHelper.instance.updateActivity(id, isDone ? 1 : 0, _userId);
+
+      await _refreshActivities();
+    } catch (e) {
+      if (!mounted) return;
+      _showMessage('Gagal memperbarui status agenda.');
+    }
+  }
+
+  // =====================================================
+  // 6. DIALOG TAMBAH AGENDA
+  // =====================================================
 
   void _showAddActivityDialog() {
     final titleController = TextEditingController();
-    final dateController = TextEditingController(text: 'Senin, 22 Juni 2026');
-    final timeController = TextEditingController(text: '10:00 WIB');
-    String selectedCategory = 'Kuliah';
+    final dateController = TextEditingController();
+    final timeController = TextEditingController();
+
+    String selectedCategory = 'Pribadi';
 
     showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return StatefulBuilder(
-          builder: (context, setStateDialog) {
+          builder: (dialogContext, setDialogState) {
             return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: const Text('Tambah Kegiatan Baru', style: TextStyle(fontWeight: FontWeight.bold)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+
+              title: const Text(
+                'Tambah Kegiatan Baru',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -81,98 +170,201 @@ class _DashboardPageState extends State<DashboardPage> {
                       controller: titleController,
                       decoration: InputDecoration(
                         labelText: 'Nama Kegiatan / Agenda',
-                        prefixIcon: const Icon(Icons.title, color: Color(0xFF4F46E5)),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        prefixIcon: const Icon(Icons.title, color: primary),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                     ),
+
                     const SizedBox(height: 16),
+
                     TextField(
                       controller: dateController,
+                      readOnly: true,
                       decoration: InputDecoration(
-                        labelText: 'Tanggal & Hari',
-                        prefixIcon: const Icon(Icons.calendar_today_rounded, color: Color(0xFF4F46E5)),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        labelText: 'Tanggal Kegiatan',
+                        hintText: 'Pilih tanggal',
+                        prefixIcon: const Icon(
+                          Icons.calendar_today,
+                          color: primary,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
+                      onTap: () async {
+                        final selectedDate = await showDatePicker(
+                          context: dialogContext,
+                          initialDate: DateTime.now(),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2100),
+                        );
+
+                        if (selectedDate != null) {
+                          const days = [
+                            'Senin',
+                            'Selasa',
+                            'Rabu',
+                            'Kamis',
+                            'Jumat',
+                            'Sabtu',
+                            'Minggu',
+                          ];
+
+                          const months = [
+                            'Januari',
+                            'Februari',
+                            'Maret',
+                            'April',
+                            'Mei',
+                            'Juni',
+                            'Juli',
+                            'Agustus',
+                            'September',
+                            'Oktober',
+                            'November',
+                            'Desember',
+                          ];
+
+                          final formatted =
+                              '${days[selectedDate.weekday - 1]}, '
+                              '${selectedDate.day} '
+                              '${months[selectedDate.month - 1]} '
+                              '${selectedDate.year}';
+
+                          setDialogState(() {
+                            dateController.text = formatted;
+                          });
+                        }
+                      },
                     ),
+
                     const SizedBox(height: 16),
+
                     TextField(
                       controller: timeController,
+                      readOnly: true,
                       decoration: InputDecoration(
-                        labelText: 'Jam (Cth: 10:00 WIB)',
-                        prefixIcon: const Icon(Icons.access_time_rounded, color: Color(0xFF4F46E5)),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        labelText: 'Jam Kegiatan',
+                        hintText: 'Pilih jam',
+                        prefixIcon: const Icon(
+                          Icons.access_time,
+                          color: primary,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
+                      onTap: () async {
+                        final selectedTime = await showTimePicker(
+                          context: dialogContext,
+                          initialTime: TimeOfDay.now(),
+                        );
+
+                        if (selectedTime != null) {
+                          setDialogState(() {
+                            timeController.text =
+                                '${selectedTime.hour.toString().padLeft(2, '0')}:'
+                                '${selectedTime.minute.toString().padLeft(2, '0')} WIB';
+                          });
+                        }
+                      },
                     ),
+
                     const SizedBox(height: 16),
+
                     DropdownButtonFormField<String>(
-                      value: selectedCategory,
+                      initialValue: selectedCategory,
                       decoration: InputDecoration(
                         labelText: 'Kategori Agenda',
-                        prefixIcon: const Icon(Icons.category_rounded, color: Color(0xFF4F46E5)),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        prefixIcon: const Icon(Icons.category, color: primary),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                      items: ['Kuliah', 'Tugas', 'Penting', 'Pribadi'].map((String category) {
+
+                      items: ['Kuliah', 'Tugas', 'Penting', 'Pribadi'].map((
+                        category,
+                      ) {
                         return DropdownMenuItem(
                           value: category,
                           child: Text(category),
                         );
                       }).toList(),
+
                       onChanged: (value) {
-                        setStateDialog(() {
-                          selectedCategory = value!;
-                        });
+                        if (value != null) {
+                          setDialogState(() {
+                            selectedCategory = value;
+                          });
+                        }
                       },
                     ),
                   ],
                 ),
               ),
+
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    titleController.dispose();
+                    dateController.dispose();
+                    timeController.dispose();
+                  },
+                  child: const Text(
+                    'Batal',
+                    style: TextStyle(color: Colors.grey),
+                  ),
                 ),
+
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF4F46E5),
+                    backgroundColor: primary,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
+
                   onPressed: () async {
-                    if (titleController.text.isNotEmpty) {
-                      setState(() {
-                        _activities.add({
-                          'title': titleController.text,
-                          'date': dateController.text,
-                          'time': timeController.text,
-                          'category': selectedCategory,
-                          'isDone': false,
-                        });
-                      });
-                      _saveActivities();
-
-                      // --- PANGGIL ALARM NOTIFIKASI OTOMATIS ---
-                      // Contoh pengaturan waktu demo (misal: 10 detik dari sekarang agar bisa langsung dites)
-                      // Pada implementasi nyata, bisa diparsing dari input date & time user.
-                      DateTime alarmTime = DateTime.now().add(const Duration(seconds: 10));
-
-                      await NotificationHelper.scheduleNotification(
-                        id: DateTime.now().millisecondsSinceEpoch ~/ 1000, // ID Unik
-                        title: 'Pengingat Agenda: ${titleController.text}',
-                        body: 'Waktunya kegiatan kategori $selectedCategory dimulai pukul ${timeController.text}!',
-                        scheduledDate: alarmTime,
-                      );
-                      // -----------------------------------------
-
-                      Navigator.pop(context);
-
+                    if (titleController.text.trim().isEmpty ||
+                        dateController.text.isEmpty ||
+                        timeController.text.isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Kegiatan berhasil dijadwalkan & alarm aktif! 🔔'),
-                          backgroundColor: Colors.green,
+                          content: Text('Lengkapi semua data agenda.'),
                         ),
                       );
+                      return;
+                    }
+
+                    final title = titleController.text.trim();
+                    final date = dateController.text;
+                    final time = timeController.text;
+
+                    Navigator.pop(dialogContext);
+
+                    try {
+                      await _addNewActivity(
+                        title,
+                        date,
+                        time,
+                        selectedCategory,
+                      );
+
+                      if (!mounted) return;
+
+                      _showMessage('Agenda berhasil disimpan!');
+                    } catch (e) {
+                      if (!mounted) return;
+
+                      _showMessage('Gagal menyimpan agenda: $e');
+                    } finally {
+                      titleController.dispose();
+                      dateController.dispose();
+                      timeController.dispose();
                     }
                   },
+
                   child: const Text('Simpan'),
                 ),
               ],
@@ -182,6 +374,10 @@ class _DashboardPageState extends State<DashboardPage> {
       },
     );
   }
+
+  // =====================================================
+  // 7. WARNA KATEGORI
+  // =====================================================
 
   Color _getCategoryColor(String category) {
     switch (category) {
@@ -196,238 +392,383 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  // =====================================================
+  // 8. SNACKBAR
+  // =====================================================
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+      );
+  }
+
+  // =====================================================
+  // 9. LOGOUT FIREBASE
+  // =====================================================
+
+  Future<void> _logout() async {
+    try {
+      await _authService.logout();
+
+      if (!mounted) return;
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+        (route) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _showMessage('Gagal logout. Silakan coba lagi.');
+    }
+  }
+
+  // =====================================================
+  // 10. DASHBOARD UTAMA
+  // =====================================================
+
   @override
   Widget build(BuildContext context) {
-    int completedCount = _activities.where((a) => a['isDone'] == true).length;
-    double progress = _activities.isEmpty ? 0 : completedCount / _activities.length;
+    final completedCount = _activities
+        .where((a) => (a['is_active'] ?? 0) == 1)
+        .length;
+
+    final progress = _activities.isEmpty
+        ? 0.0
+        : completedCount / _activities.length;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
+
       appBar: AppBar(
         title: const Text(
           'Daily Activity & Reminder',
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
-        backgroundColor: const Color(0xFF4F46E5),
+        backgroundColor: primary,
         elevation: 0,
+
         actions: [
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             tooltip: 'Logout',
-            onPressed: () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const LoginPage()),
-              );
-            },
+            onPressed: _logout,
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Kartu Statistik & Sapaan
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF4F46E5), Color(0xFF818CF8)],
-                ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF4F46E5).withOpacity(0.3),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Halo, Lutfi! 👋',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                            SizedBox(height: 6),
-                            Text(
-                              'Berikut jadwal kegiatan dan pengingat aktifmu.',
-                              style: TextStyle(fontSize: 13, color: Colors.white70),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.notifications_active_rounded,
-                          color: Colors.amber,
-                          size: 32,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Selesai: $completedCount dari ${_activities.length} agenda',
-                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
-                      ),
-                      Text(
-                        '${(progress * 100).toStringAsFixed(0)}%',
-                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      backgroundColor: Colors.white24,
-                      color: Colors.amber,
-                      minHeight: 8,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Daftar Kegiatan & Agenda',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1E293B),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: _activities.isEmpty
-                  ? const Center(child: Text('Belum ada kegiatan terjadwal.'))
-                  : ListView.builder(
-                      itemCount: _activities.length,
-                      itemBuilder: (context, index) {
-                        final activity = _activities[index];
-                        final bool isDone = activity['isDone'] as bool;
-                        final String category = activity['category'] ?? 'Kuliah';
 
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.03),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(color: primary))
+          : RefreshIndicator(
+              onRefresh: _refreshActivities,
+
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // KARTU SAPAAN DAN STATISTIK
+
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [primary, secondary],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: primary.withOpacity(0.25),
+                            blurRadius: 12,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Halo, $_userName! 👋',
+                                      style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+
+                                    const SizedBox(height: 6),
+
+                                    const Text(
+                                      'Berikut jadwal kegiatan dan pengingat aktifmu.',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.white70,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.notifications_active_rounded,
+                                  color: Colors.amber,
+                                  size: 32,
+                                ),
                               ),
                             ],
                           ),
-                          child: CheckboxListTile(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            title: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    activity['title'] as String,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      decoration: isDone
-                                          ? TextDecoration.lineThrough
-                                          : TextDecoration.none,
-                                      color: isDone
-                                          ? Colors.grey
-                                          : const Color(0xFF1E293B),
-                                    ),
-                                  ),
+
+                          const SizedBox(height: 20),
+
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Selesai: $completedCount dari ${_activities.length} agenda',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
                                 ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: _getCategoryColor(category).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    category,
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                      color: _getCategoryColor(category),
-                                    ),
+                              ),
+
+                              Text(
+                                '${(progress * 100).toStringAsFixed(0)}%',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: LinearProgressIndicator(
+                              value: progress,
+                              backgroundColor: Colors.white24,
+                              color: Colors.amber,
+                              minHeight: 8,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    const Text(
+                      'Daftar Kegiatan & Agenda',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    // DAFTAR AGENDA
+                    Expanded(
+                      child: _activities.isEmpty
+                          ? ListView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              children: const [
+                                SizedBox(height: 100),
+                                Center(
+                                  child: Column(
+                                    children: [
+                                      Icon(
+                                        Icons.event_note_rounded,
+                                        size: 65,
+                                        color: Colors.grey,
+                                      ),
+                                      SizedBox(height: 12),
+                                      Text(
+                                        'Belum ada kegiatan terjadwal.',
+                                        style: TextStyle(color: Colors.grey),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
-                            ),
-                            subtitle: Padding(
-                              padding: const EdgeInsets.only(top: 6.0),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.calendar_month_rounded, size: 14, color: Color(0xFF4F46E5)),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    activity['date'] as String,
-                                    style: const TextStyle(fontSize: 12, color: Colors.black54, fontWeight: FontWeight.w500),
+                            )
+                          : ListView.builder(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              itemCount: _activities.length,
+
+                              itemBuilder: (context, index) {
+                                final activity = _activities[index];
+
+                                final int id = activity['id'] as int;
+
+                                final bool isDone =
+                                    (activity['is_active'] ?? 0) == 1;
+
+                                final String category =
+                                    activity['category'] ?? 'Pribadi';
+
+                                final String title = activity['title'] ?? '';
+
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.03),
+                                        blurRadius: 6,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 12),
-                                  const Icon(Icons.access_time_rounded, size: 14, color: Colors.grey),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    activity['time'] as String,
-                                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+
+                                  child: CheckboxListTile(
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+
+                                    title: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            title,
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              decoration: isDone
+                                                  ? TextDecoration.lineThrough
+                                                  : TextDecoration.none,
+                                              color: isDone
+                                                  ? Colors.grey
+                                                  : const Color(0xFF1E293B),
+                                            ),
+                                          ),
+                                        ),
+
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: _getCategoryColor(
+                                              category,
+                                            ).withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            category,
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                              color: _getCategoryColor(
+                                                category,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+
+                                    subtitle: Padding(
+                                      padding: const EdgeInsets.only(top: 6),
+                                      child: Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.calendar_month_rounded,
+                                            size: 14,
+                                            color: primary,
+                                          ),
+
+                                          const SizedBox(width: 4),
+
+                                          Expanded(
+                                            child: Text(
+                                              activity['date'] ?? '',
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.black54,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+
+                                          const SizedBox(width: 8),
+
+                                          const Icon(
+                                            Icons.access_time_rounded,
+                                            size: 14,
+                                            color: Colors.grey,
+                                          ),
+
+                                          const SizedBox(width: 4),
+
+                                          Text(
+                                            activity['time'] ?? '',
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+
+                                    secondary: IconButton(
+                                      icon: const Icon(
+                                        Icons.delete_outline,
+                                        color: Colors.redAccent,
+                                      ),
+                                      tooltip: 'Hapus Agenda',
+                                      onPressed: () {
+                                        _deleteActivity(id);
+                                      },
+                                    ),
+
+                                    value: isDone,
+
+                                    activeColor: primary,
+
+                                    onChanged: (value) {
+                                      _toggleActivity(id, value ?? false);
+                                    },
                                   ),
-                                ],
-                              ),
-                            ),
-                            secondary: IconButton(
-                              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                              tooltip: 'Hapus Agenda',
-                              onPressed: () {
-                                setState(() {
-                                  _activities.removeAt(index);
-                                });
-                                _saveActivities();
+                                );
                               },
                             ),
-                            value: isDone,
-                            activeColor: const Color(0xFF4F46E5),
-                            onChanged: (bool? value) {
-                              setState(() {
-                                _activities[index]['isDone'] = value ?? false;
-                              });
-                              _saveActivities();
-                            },
-                          ),
-                        );
-                      },
                     ),
+                  ],
+                ),
+              ),
             ),
-          ],
-        ),
-      ),
+
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: const Color(0xFF4F46E5),
+        backgroundColor: primary,
         foregroundColor: Colors.white,
         onPressed: _showAddActivityDialog,
         icon: const Icon(Icons.add_alarm_rounded),
